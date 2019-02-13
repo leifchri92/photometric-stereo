@@ -9,3 +9,7 @@ An implementation of classic photometric stereo ala Woodham 1980 [1]. More conci
 [5] https://github.com/xiumingzhang/photometric-stereo  
 [6] https://github.com/NewProggie/Photometric-Stereo  
 [7] https://github.com/yasumat/RobustPhotometricStereo
+
+sudo apt-get install libarmadillo-dev
+
+g++ -I ./external ./external/lodepng.cpp run_ps.cpp -larmadillo -llapack -lblas
