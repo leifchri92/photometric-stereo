@@ -8,6 +8,7 @@
 #include "lodepng.h"
 
 using namespace std;
+using namespace arma;
 
 // http://www.martinbroadhurst.com/how-to-split-a-string-in-c.html
 void split(const string& str, vector<string>& cont, char delim = ' ')
@@ -24,20 +25,22 @@ int main(int argc, char *argv[]) {
 	// ----------------------------------------
 	// Get light positions from file
 	// ----------------------------------------
-	int numLights = 12;
-	// float lights[numLights][3];
-	arma::mat lights(numLights,3);
+	int numLights;
+	arma::mat lights;
 	string line;
 	ifstream myfile ("light_positions.txt");
 	int currentLight = 0;
 	if (myfile.is_open()) {
+		getline(myfile,line);
+		numLights = stoi(line);
+		lights.set_size(numLights,3);
+
 		while (getline(myfile,line)) {
 			int start = line.find('(');
 			int end = line.find(')');
 	        vector<string> words;
-    	    split(line.substr(start+1,end-1), words, ',');
+    	    split(line.substr(start+1,end-1), words, ' ');
 			
-    	    // for (int p=0; p<3; p++) lights[currentLight][p] = stof(words[p]);
     	    for (int p=0; p<3; p++) lights(currentLight, p) = stof(words[p]);
 
 			currentLight++;
@@ -45,18 +48,17 @@ int main(int argc, char *argv[]) {
 		}
 		myfile.close();
 	} else cout << "Unable to open file"; 
-
-	lights.print("Lights:");
-
-	return 0;
+	// lights.print("Lights:");
 
 	// ----------------------------------------
 	// Read mask
 	// ----------------------------------------
-	const char* filename = argc > 1 ? argv[1] : "img/sphere/sphere-mask.png";
+	const char* filename = argc > 1 ? argv[1] : "sphere";
+	string pathStr = "psmImages/" + string(filename) + "/" + string(filename);
+	string maskFilename = pathStr + ".mask.png";
 	vector<unsigned char> mask; //the raw pixels
 	unsigned width, height;
-	unsigned error = lodepng::decode(mask, width, height, filename);
+	unsigned error = lodepng::decode(mask, width, height, maskFilename);
 	//if there's an error, display it
 	if(error) cout << "decoder error " << error << ": " << lodepng_error_text(error) << endl;
 
@@ -65,9 +67,12 @@ int main(int argc, char *argv[]) {
 	// ----------------------------------------
 	vector<vector<unsigned char>> images;
 	images.resize(numLights);
+
+	vector<unsigned char> temp;
+
+
 	for (int i=0; i<numLights; i++) {
-		images[i].resize(width * height * 4);
-		string str = "img/sphere/sphere" + to_string(i) + ".png";
+		string str = pathStr + "." + to_string(i) + ".png";
 		error = lodepng::decode(images[i], width, height, str.c_str());
 		//if there's an error, display it
 		if(error) cout << "decoder error " << error << ": " << lodepng_error_text(error) << endl;
@@ -78,12 +83,12 @@ int main(int argc, char *argv[]) {
 	// ----------------------------------------
 	// p = number of lights
 	// Initialize T, a height x width x p matrix, whose (h, w, :) holds the intesities at (h, w) for all p different lights
-	vector<vector<vector<float>>> T;
+	vector<vector<arma::vec>> T;
 	T.resize(height);
 	for (int i=0; i<height; i++) {
 		T[i].resize(width);
 		for (int j=0; j<width; j++) {
-			T[i][j].resize(numLights);
+			T[i][j].set_size(numLights);
 		}
 	}
 
@@ -99,58 +104,81 @@ int main(int argc, char *argv[]) {
 				g = images[i][h*width*4+w*4+1];
 				b = images[i][h*width*4+w*4+2];
 				// normalize
-				T[h][w][i] = sqrt(r*r + g*g + b*b);
+				T[h][w](i) = sqrt(r*r + g*g + b*b);
+
+				images[i][h*width*4+w*4+0] = T[h][w](i)*255/442;
+				images[i][h*width*4+w*4+1] = T[h][w](i)*255/442;
+				images[i][h*width*4+w*4+2] = T[h][w](i)*255/442;
+
 			}
 		}
 	}
 
 	// Initilize N, a height x width x 3 matrix, whose (h, w, :) holds the surface normal at (h,w)
-	vector<vector<vector<float>>> N;
+	vector<vector<arma::vec>> N;
 	N.resize(height);
 	for (int i=0; i<height; i++) {
 		N[i].resize(width);
 		for (int j=0; j<width; j++) {
-			N[i][j].resize(3);
+			N[i][j].set_size(3);
+			N[i][j] << 0 << 0 << 0;
 		}
 	}
 
-	float nNorm;
+	float kd;
 	arma::vec n = arma::zeros<arma::vec>(3);
-
-	n << 1 << 2 << 3;
-	n.print();
-
-	cout << arma::norm(n) << endl;
-	cout << sqrt(n(0)*n(0) + n(1)*n(1) + n(2)*n(2)) << endl;
-
-	return 0;
+	arma::vec inten(numLights);
 	for (int h=0; h<height; h++) {
 		for (int w=0; w<width; w++) {
+			n << 0 << 0 << 0;
 			// if mask is black, skip
 			if (mask[h*width*4+w*4+0] == 0) continue;
 
-			//  i = reshape(T(h, w, :), [p, 1]);
-			// T[h][w]
+			// Intesities
+			inten = resize(T[h][w], numLights, 1);
+
  			// Solve surface normals
- 			// ' is the transpose
- 			// .' is the unconjugated copmlex transpose
-			// n = (L.'*L)\(L.'*i);
-			// inv(L.t()*L)*L.t()*i
+			n = arma::solve(lights, inten);
 
-			nNorm = norm(n);
+			// get the albedo
+			kd = norm(n);
 
-			if (nNorm != 0) {
+			if (kd != 0) {
+				// Normalize n
+				n /= kd;
+			} 
 
-			} else {
-				n << 0 << 0 << 0;
-			}
-
-			N[h][w][0] = n[0];
-			N[h][w][1] = n[1];
-			N[h][w][2] = n[2];
+			N[h][w] = n;
 		}
 	}
 
+	//generate some image
+	vector<unsigned char> nImage;
+	nImage.resize(width * height * 4);
+	for(unsigned h = 0; h < height; h++) {
+		for(unsigned w = 0; w < width; w++) {
+			if (N[h][w](0) > 0)
+				nImage[4 * width * h + 4 * w + 0] = N[h][w](0)*255;
+			else 
+				nImage[4 * width * h + 4 * w + 0] = 0;
 
+			if (N[h][w](1) > 0)
+				nImage[4 * width * h + 4 * w + 1] = N[h][w](1)*255;
+			else
+				nImage[4 * width * h + 4 * w + 1] = 0;
+
+			if (N[h][w](2) > 0)
+				nImage[4 * width * h + 4 * w + 2] = N[h][w](2)*255;
+			else
+				nImage[4 * width * h + 4 * w + 2] = 0;
+
+			nImage[4 * width * h + 4 * w + 3] = 255;
+		}
+	}
+
+	error = lodepng::encode("results/" + string(filename) + ".png", nImage, width, height);
+	//if there's an error, display it
+	if(error) cout << "decoder error " << error << ": " << lodepng_error_text(error) << endl;
+	
 	return 0;
 }
