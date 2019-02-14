@@ -1,3 +1,6 @@
+// Algorithm based on Woodham, R.J. 1980. Photometric method for determining surface orientation from multiple images. Optical Engineerings 19, I, 139-144.
+// Code adapted from Matlab implementation at https://github.com/xiumingzhang/photometric-stereo
+
 #include <iostream>
 #include <fstream>
 #include <string>
@@ -10,6 +13,166 @@
 using namespace std;
 using namespace arma;
 
+void split(const string& str, vector<string>& cont, char delim);
+bool readLightsFile(mat& lights, string filename);
+void drawNormalMap(vector<vector<vec>>N, int height, int width, string filename);
+void computeSurfaceNormals(vector<vector<vec>>& N, mat& lights, vector<vector<unsigned char>>& images, vector<unsigned char>& mask, int height, int width);
+
+int main(int argc, char *argv[]) {
+	const char* filename = argc > 1 ? argv[1] : "sphere";
+	string pathStr = "psmImages/" + string(filename) + "/" + string(filename);
+
+	// ----------------------------------------
+	// Get light positions from file
+	// ----------------------------------------
+	mat lights;
+	if (!readLightsFile(lights, "psmImages/light_positions.txt")) return -1;
+	int numLights = lights.n_rows;
+
+	// ----------------------------------------
+	// Read mask
+	// ----------------------------------------
+	vector<unsigned char> mask; //the raw pixels
+	unsigned width, height;
+	unsigned error = lodepng::decode(mask, width, height, pathStr + ".mask.png");
+	//if there's an error, display it
+	if(error) {
+		cout << "lodepng::decoder error " << error << ": " << lodepng_error_text(error) << endl;
+		return -1;
+	}
+
+	// ----------------------------------------
+	// Read images
+	// ----------------------------------------
+	vector<vector<unsigned char>> images;
+	images.resize(numLights);
+	for (int i=0; i<numLights; i++) {
+		error = lodepng::decode(images[i], width, height, pathStr + "." + to_string(i) + ".png");
+		//if there's an error, display it
+		if(error) {
+			cout << "lodepng::decoder error " << error << ": " << lodepng_error_text(error) << endl;
+			return -1;
+		}
+	}
+
+	// ----------------------------------------
+	// Compute surface normals
+	// ----------------------------------------
+	// Initilize N, a height x width x 3 matrix, whose (h, w, :) holds the surface normal at (h,w)
+	vector<vector<vec>> N;
+	N.resize(height);
+	for (int i=0; i<height; i++) {
+		N[i].resize(width);
+		for (int j=0; j<width; j++) {
+			N[i][j].set_size(3);
+			N[i][j] << 0 << 0 << 0;
+		}
+	}
+
+	computeSurfaceNormals(N, lights, images, mask, height, width);
+	drawNormalMap(N, height, width, filename);
+
+	images.clear();
+	images.shrink_to_fit();
+
+	// ----------------------------------------
+	// Compute depth 
+	// ----------------------------------------
+	// get indices of all pixels that represent a point on the object, i.e. are not the background
+	vector<int> objH, objW;
+	for (int h=0; h<height; h++) {
+		for (int w=0; w<width; w++) {
+			if (mask[h*width*4+w*4+0] == 0) continue;
+			objH.push_back(h);
+			objW.push_back(w);
+		}
+	}
+
+	int numPixels = objH.size();
+	// mapping from h, w pixel coordinates to index in objH and objW
+	mat fullToObject(height, width); 
+	fullToObject.zeros();
+	for (int i=0; i<numPixels; i++) {
+		fullToObject(objH[i], objW[i]) = i;
+	}
+
+	sp_mat M(2*numPixels, numPixels); // why are these so big?
+	mat u(2*numPixels, 1);
+
+	return 0;
+
+
+	// assemble M and u
+	vector<int> failedRows;
+	int h, w, rowIndex, vertNIndex, horizNI;
+	float nx, ny, nz;
+	for (int i=0; i<numPixels; i++) {
+		// position in 2D image
+		h = objH[i];
+		w = objW[i];
+		// surface normal
+		nx = N[h][w](0);
+		ny = N[h][w](1);
+		nz = N[h][w](2);
+		// first row - vertical neighbors
+		rowIndex = (i)*2+1; // what is this?
+		// filter our potentially harmful points
+		if (mask[(h+1)*width*4+w*4+0] != 0) { // check if down neighbor is in bound
+			vertNIndex = fullToObject(h+1, w);
+			u(rowIndex) = -ny;
+			M(rowIndex, i) = -nz;
+			M(rowIndex, vertNIndex) = nz;
+		} else if (mask[(h+1)*width*4+w*4+0] != 0) { // check if up neighbor is in bound
+			vertNIndex = fullToObject(h-1, w);
+			u(rowIndex) = ny;
+			M(rowIndex, i) = -nz;
+			M(rowIndex, vertNIndex) = nz;
+		} else { // no vertical neighbors
+			failedRows.push_back(i);
+		}
+		// second row - horizontal neighbors
+		if (mask[h*width*4+(w+1)*4+0] != 0) { // check if right neighbor is in bound
+			vertNIndex = fullToObject(h, w+1);
+			u(rowIndex) = -nx;
+			M(rowIndex, i) = -nz;
+			M(rowIndex, vertNIndex) = nz;
+		} else if (mask[(h-1)*width*4+(w-1)*4+0] != 0) { // check if left neighbor is in bound
+			vertNIndex = fullToObject(h, w-1);
+			u(rowIndex) = nx;
+			M(rowIndex, i) = -nz;
+			M(rowIndex, vertNIndex) = nz;
+		} else { // no horizontal
+			failedRows.push_back(i);
+		}
+	}
+
+	// remove all-zero rows
+	for (int i=0; i<failedRows.size(); i++) {
+		M.shed_row(failedRows[i]);
+		u.shed_row(failedRows[i]);
+	}
+
+	mat z = spsolve(M, u);
+
+	// outliers due to singularity
+	// outlier_ind = abs(zscore(z))>10;
+	// z_min = min(z(~outlier_ind));
+	// z_max = max(z(~outlier_ind));
+
+	// reassemble z back to 2D
+	// Z = double(mask);
+	// for idx = 1:no_pix
+	//     % Position in 2D image
+	//     h = obj_h(idx);
+	//     w = obj_w(idx);
+	//     % Rescale
+	//     Z(h, w) = (z(idx)-z_min)/(z_max-z_min)*255;
+	// end	
+
+	return 0;
+}
+
+// utility function to split strings
 // http://www.martinbroadhurst.com/how-to-split-a-string-in-c.html
 void split(const string& str, vector<string>& cont, char delim = ' ')
 {
@@ -20,15 +183,10 @@ void split(const string& str, vector<string>& cont, char delim = ' ')
     }
 }
 
-
-int main(int argc, char *argv[]) {
-	// ----------------------------------------
-	// Get light positions from file
-	// ----------------------------------------
+bool readLightsFile(mat& lights, string filename) {
 	int numLights;
-	arma::mat lights;
 	string line;
-	ifstream myfile ("light_positions.txt");
+	ifstream myfile (filename);
 	int currentLight = 0;
 	if (myfile.is_open()) {
 		getline(myfile,line);
@@ -36,54 +194,27 @@ int main(int argc, char *argv[]) {
 		lights.set_size(numLights,3);
 
 		while (getline(myfile,line)) {
-			int start = line.find('(');
-			int end = line.find(')');
-	        vector<string> words;
-    	    split(line.substr(start+1,end-1), words, ' ');
-			
+			vector<string> words;
+    	    split(line, words, ' ');
+
     	    for (int p=0; p<3; p++) lights(currentLight, p) = stof(words[p]);
 
 			currentLight++;
 			if (currentLight == numLights) break;
 		}
 		myfile.close();
-	} else cout << "Unable to open file"; 
-	// lights.print("Lights:");
-
-	// ----------------------------------------
-	// Read mask
-	// ----------------------------------------
-	const char* filename = argc > 1 ? argv[1] : "sphere";
-	string pathStr = "psmImages/" + string(filename) + "/" + string(filename);
-	string maskFilename = pathStr + ".mask.png";
-	vector<unsigned char> mask; //the raw pixels
-	unsigned width, height;
-	unsigned error = lodepng::decode(mask, width, height, maskFilename);
-	//if there's an error, display it
-	if(error) cout << "decoder error " << error << ": " << lodepng_error_text(error) << endl;
-
-	// ----------------------------------------
-	// Read images
-	// ----------------------------------------
-	vector<vector<unsigned char>> images;
-	images.resize(numLights);
-
-	vector<unsigned char> temp;
-
-
-	for (int i=0; i<numLights; i++) {
-		string str = pathStr + "." + to_string(i) + ".png";
-		error = lodepng::decode(images[i], width, height, str.c_str());
-		//if there's an error, display it
-		if(error) cout << "decoder error " << error << ": " << lodepng_error_text(error) << endl;
+		return true;
+	} else { 
+		cout << "Unable to open " << filename << endl; 
+		return false;
 	}
+}
 
-	// ----------------------------------------
-	// Compute surface normals
-	// ----------------------------------------
-	// p = number of lights
+void computeSurfaceNormals(vector<vector<vec>>& N, mat& lights, vector<vector<unsigned char>>& images, vector<unsigned char>& mask, int height, int width) {
+	int numLights = images.size();
+
 	// Initialize T, a height x width x p matrix, whose (h, w, :) holds the intesities at (h, w) for all p different lights
-	vector<vector<arma::vec>> T;
+	vector<vector<vec>> T;
 	T.resize(height);
 	for (int i=0; i<height; i++) {
 		T[i].resize(width);
@@ -114,20 +245,9 @@ int main(int argc, char *argv[]) {
 		}
 	}
 
-	// Initilize N, a height x width x 3 matrix, whose (h, w, :) holds the surface normal at (h,w)
-	vector<vector<arma::vec>> N;
-	N.resize(height);
-	for (int i=0; i<height; i++) {
-		N[i].resize(width);
-		for (int j=0; j<width; j++) {
-			N[i][j].set_size(3);
-			N[i][j] << 0 << 0 << 0;
-		}
-	}
-
 	float kd;
-	arma::vec n = arma::zeros<arma::vec>(3);
-	arma::vec inten(numLights);
+	vec n = zeros<vec>(3);
+	vec inten(numLights);
 	for (int h=0; h<height; h++) {
 		for (int w=0; w<width; w++) {
 			n << 0 << 0 << 0;
@@ -138,7 +258,7 @@ int main(int argc, char *argv[]) {
 			inten = resize(T[h][w], numLights, 1);
 
  			// Solve surface normals
-			n = arma::solve(lights, inten);
+			n = solve(lights, inten);
 
 			// get the albedo
 			kd = norm(n);
@@ -151,8 +271,9 @@ int main(int argc, char *argv[]) {
 			N[h][w] = n;
 		}
 	}
+}
 
-	//generate some image
+void drawNormalMap(vector<vector<vec>> N, int height, int width, string filename) {
 	vector<unsigned char> nImage;
 	nImage.resize(width * height * 4);
 	for(unsigned h = 0; h < height; h++) {
@@ -176,9 +297,8 @@ int main(int argc, char *argv[]) {
 		}
 	}
 
-	error = lodepng::encode("results/" + string(filename) + ".png", nImage, width, height);
+	unsigned error = lodepng::encode("results/" + string(filename) + ".png", nImage, width, height);
 	//if there's an error, display it
-	if(error) cout << "decoder error " << error << ": " << lodepng_error_text(error) << endl;
+	if(error) cout << "lodepng::encoder error " << error << ": " << lodepng_error_text(error) << endl;
 	
-	return 0;
 }
