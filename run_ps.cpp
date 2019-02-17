@@ -19,7 +19,7 @@ void drawNormalMap(vector<vector<vec>>N, int height, int width, string filename)
 void computeSurfaceNormals(vector<vector<vec>>& N, mat& lights, vector<vector<unsigned char>>& images, vector<unsigned char>& mask, int height, int width);
 
 int main(int argc, char *argv[]) {
-	const char* filename = argc > 1 ? argv[1] : "sphere";
+	const char* filename = argc > 1 ? argv[1] : "gray";
 	string pathStr = "psmImages/" + string(filename) + "/" + string(filename);
 
 	// ----------------------------------------
@@ -72,6 +72,7 @@ int main(int argc, char *argv[]) {
 	computeSurfaceNormals(N, lights, images, mask, height, width);
 	drawNormalMap(N, height, width, filename);
 
+	// free the images as we won't be using them again
 	images.clear();
 	images.shrink_to_fit();
 
@@ -89,7 +90,7 @@ int main(int argc, char *argv[]) {
 	}
 
 	int numPixels = objH.size();
-	// mapping from h, w pixel coordinates to index in objH and objW
+	// mapping from (h, w) pixel coordinates to index in objH and objW
 	mat fullToObject(height, width); 
 	fullToObject.zeros();
 	for (int i=0; i<numPixels; i++) {
@@ -98,9 +99,6 @@ int main(int argc, char *argv[]) {
 
 	sp_mat M(2*numPixels, numPixels); // why are these so big?
 	mat u(2*numPixels, 1);
-
-	return 0;
-
 
 	// assemble M and u
 	vector<int> failedRows;
@@ -115,7 +113,7 @@ int main(int argc, char *argv[]) {
 		ny = N[h][w](1);
 		nz = N[h][w](2);
 		// first row - vertical neighbors
-		rowIndex = (i)*2+1; // what is this?
+		rowIndex = (i)*2; // what is this?
 		// filter our potentially harmful points
 		if (mask[(h+1)*width*4+w*4+0] != 0) { // check if down neighbor is in bound
 			vertNIndex = fullToObject(h+1, w);
@@ -128,7 +126,7 @@ int main(int argc, char *argv[]) {
 			M(rowIndex, i) = -nz;
 			M(rowIndex, vertNIndex) = nz;
 		} else { // no vertical neighbors
-			failedRows.push_back(i);
+			failedRows.push_back(rowIndex);
 		}
 		// second row - horizontal neighbors
 		if (mask[h*width*4+(w+1)*4+0] != 0) { // check if right neighbor is in bound
@@ -142,17 +140,19 @@ int main(int argc, char *argv[]) {
 			M(rowIndex, i) = -nz;
 			M(rowIndex, vertNIndex) = nz;
 		} else { // no horizontal
-			failedRows.push_back(i);
+			failedRows.push_back(rowIndex);
 		}
 	}
 
 	// remove all-zero rows
+	int numShed = 0;
 	for (int i=0; i<failedRows.size(); i++) {
-		M.shed_row(failedRows[i]);
-		u.shed_row(failedRows[i]);
+		M.shed_row(failedRows[i]-numShed);
+		u.shed_row(failedRows[i]-numShed);
+		numShed++;
 	}
 
-	mat z = spsolve(M, u);
+	mat z = spsolve(M.t() * M, M.t() * u);
 
 	// outliers due to singularity
 	// outlier_ind = abs(zscore(z))>10;
@@ -258,7 +258,7 @@ void computeSurfaceNormals(vector<vector<vec>>& N, mat& lights, vector<vector<un
 			inten = resize(T[h][w], numLights, 1);
 
  			// Solve surface normals
-			n = solve(lights, inten);
+			n = solve(lights.t() * lights, lights.t() * inten);
 
 			// get the albedo
 			kd = norm(n);
