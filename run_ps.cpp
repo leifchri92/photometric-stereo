@@ -76,6 +76,8 @@ int main(int argc, char *argv[]) {
 	images.clear();
 	images.shrink_to_fit();
 
+	return 0;
+
 	// ----------------------------------------
 	// Compute depth 
 	// ----------------------------------------
