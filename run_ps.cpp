@@ -15,11 +15,11 @@ using namespace arma;
 
 void split(const string& str, vector<string>& cont, char delim);
 bool readLightsFile(mat& lights, string filename);
-void drawNormalMap(vector<vector<vec>>N, int height, int width, string filename);
+void drawNormalMap(vector<vector<vec>>N, int height, int width, string filename, vector<unsigned char>& mask);
 void computeSurfaceNormals(vector<vector<vec>>& N, mat& lights, vector<vector<unsigned char>>& images, vector<unsigned char>& mask, int height, int width);
 
 int main(int argc, char *argv[]) {
-	const char* filename = argc > 1 ? argv[1] : "antoninuspious";
+	const char* filename = argc > 1 ? argv[1] : "antoninuspius";
 	string pathStr = "psmImages/" + string(filename) + "/" + string(filename);
 
 	// ----------------------------------------
@@ -37,7 +37,7 @@ int main(int argc, char *argv[]) {
 	unsigned error = lodepng::decode(mask, width, height, pathStr + ".mask.png");
 	//if there's an error, display it
 	if(error) {
-		cout << "lodepng::decoder error mask" << error << ": " << lodepng_error_text(error) << endl;
+		cout << "lodepng::decoder error" << error << ": " <<  pathStr << ".mask.png " << lodepng_error_text(error) << endl;
 		return -1;
 	}
 
@@ -71,7 +71,7 @@ int main(int argc, char *argv[]) {
 	}
 
 	computeSurfaceNormals(N, lights, images, mask, height, width);
-	drawNormalMap(N, height, width, filename);
+	drawNormalMap(N, height, width, filename, mask);
 
 	// free the images as we won't be using them again
 	images.clear();
@@ -276,25 +276,20 @@ void computeSurfaceNormals(vector<vector<vec>>& N, mat& lights, vector<vector<un
 	}
 }
 
-void drawNormalMap(vector<vector<vec>> N, int height, int width, string filename) {
+void drawNormalMap(vector<vector<vec>> N, int height, int width, string filename, vector<unsigned char>& mask) {
 	vector<unsigned char> nImage;
 	nImage.resize(width * height * 4);
 	for(unsigned h = 0; h < height; h++) {
 		for(unsigned w = 0; w < width; w++) {
-			if (N[h][w](0) > 0)
-				nImage[4 * width * h + 4 * w + 0] = N[h][w](0)*255;
-			else 
+			if (mask[h*width*4+w*4+0] == 0) {
 				nImage[4 * width * h + 4 * w + 0] = 0;
-
-			if (N[h][w](1) > 0)
-				nImage[4 * width * h + 4 * w + 1] = N[h][w](1)*255;
-			else
 				nImage[4 * width * h + 4 * w + 1] = 0;
-
-			if (N[h][w](2) > 0)
-				nImage[4 * width * h + 4 * w + 2] = N[h][w](2)*255;
-			else
 				nImage[4 * width * h + 4 * w + 2] = 0;
+			} else {
+				nImage[4 * width * h + 4 * w + 0] = ((N[h][w](0)+1)/2) * 255;
+				nImage[4 * width * h + 4 * w + 1] = ((N[h][w](1)+1)/2) * 255;
+				nImage[4 * width * h + 4 * w + 2] = ((N[h][w](2)+1)/2) * 255;
+			}
 
 			nImage[4 * width * h + 4 * w + 3] = 255;
 		}

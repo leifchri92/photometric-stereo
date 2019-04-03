@@ -1,8 +1,9 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import csv
+import sys
 
-hist_flag = sys.argv[1]
+hist_flag = int(sys.argv[1])
 
 path_to_csv= "ps_comp" + sys.argv[2] + ".csv"
 
@@ -19,8 +20,10 @@ for i in range(0, len(rows)):
 data_flat = data.flatten();
 data_flat = np.delete(data_flat, np.nonzero(data_flat<0))
 
-print("Mean: " + str(data_flat.mean()))
-print("Std: " + str(data_flat.std()))
+mean = data_flat.mean()
+std = data_flat.std()
+
+plt.rcParams.update({'font.size': 22})
 
 if hist_flag:
 	cm = plt.cm.get_cmap('magma')
@@ -31,8 +34,11 @@ if hist_flag:
 	col /= max(col)
 	for c, p in zip(col, patches):
 	    plt.setp(p, 'facecolor', cm(c))
+	plt.suptitle('mean = ' + str(mean) +' / std. dev. = ' + str(std), fontsize=30, fontweight='bold')
 else:
 	plt.imshow(data,cmap='magma',interpolation='nearest')
+	plt.xticks([])
+	plt.yticks([])
 	plt.colorbar()
 
 plt.show()

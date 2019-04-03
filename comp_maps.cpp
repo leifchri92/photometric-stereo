@@ -4,6 +4,10 @@
 #include <string>
 #include "lodepng.h"
 
+// takes two arguments:
+// 		1. name of original
+// 		2. extension indicating defenses
+
 int main(int argc, char *argv[]) {
 	const char* in1 = argc > 1 ? argv[1] : "";
 	std::string filename = "./results/" + std::string(in1);
@@ -55,7 +59,7 @@ int main(int argc, char *argv[]) {
 	image_heatmap.resize(image_size);
 
 	std::ofstream csv_file;
-	csv_file.open ("ps_comp" + filename + ext + ".csv");
+	csv_file.open ("ps_comp-" + std::string(in1) + ext + ".csv");
 
 	int counter = 0;
 	for (int i=0; i<image_size; i+=4) {
