@@ -5,7 +5,11 @@
 #include "lodepng.h"
 
 int main(int argc, char *argv[]) {
-	const char* filename = argc > 1 ? argv[1] : "./results/antoninuspious";
+	const char* in1 = argc > 1 ? argv[1] : "";
+	std::string filename = "./results/" + std::string(in1);
+
+	const char* in2 = argc > 2 ? argv[2] : "";
+	std::string ext = std::string(in2);
 	
 	std::string filename_original = filename + std::string(".normals.png");
 	std::vector<unsigned char> image_original; //the raw pixels
@@ -18,7 +22,7 @@ int main(int argc, char *argv[]) {
 	error = lodepng::decode(image_original, width, height, filename_original.c_str());
 	//if there's an error, display it
 	if(error) {
-		std::cout << "decoder error " << error << ": " << lodepng_error_text(error) << std::endl;
+		std::cout << "decoder error " << filename_original << error << ": " << lodepng_error_text(error) << std::endl;
 		return -1;
 	}
 	image_size = width*height*4;
@@ -30,18 +34,17 @@ int main(int argc, char *argv[]) {
 
 	error = lodepng::decode(image_mask, width, height, filename_mask.c_str());
 	if(error) {
-		std::cout << "decoder error " << error << ": " << lodepng_error_text(error) << std::endl;
+		std::cout << "decoder error " << filename_mask << error << ": " << lodepng_error_text(error) << std::endl;
 		return -1;
 	}
 
 	// Read the reconstruction
-
 	std::vector<unsigned char> image_comp;
-	std::string filename_comp = filename + std::string(".png");
+	std::string filename_comp = filename + ext +".png";
 
 	error = lodepng::decode(image_comp, width, height, filename_comp.c_str());
 	if(error) {
-		std::cout << "decoder error " << error << ": " << lodepng_error_text(error) << std::endl;
+		std::cout << "decoder error " << filename_comp << error << ": " << lodepng_error_text(error) << std::endl;
 		return -1;
 	}
 
@@ -52,7 +55,7 @@ int main(int argc, char *argv[]) {
 	image_heatmap.resize(image_size);
 
 	std::ofstream csv_file;
-	csv_file.open ("ps_comp.csv");
+	csv_file.open ("ps_comp" + filename + ext + ".csv");
 
 	int counter = 0;
 	for (int i=0; i<image_size; i+=4) {
@@ -67,8 +70,12 @@ int main(int argc, char *argv[]) {
 
 		// std::cout<< int(image_mask[i]);
 		// break;
-		if (int(image_mask[i]) == 0) 
+		if (int(image_mask[i]) == 0) {
 			dist = -1;
+			image_heatmap[i+3] = 0;
+		} else {
+			image_heatmap[i+3] = 255;
+		}
 
 		csv_file << dist;
 
@@ -78,13 +85,12 @@ int main(int argc, char *argv[]) {
 			csv_file << '\n';
 			counter = 0;
 		}
-		image_heatmap[i+3] = 255;
 	}
 	csv_file.close();
 
 	// Write difference
 
-	string out_filename = filename + std::string(".comp.png");
+	std::string out_filename = filename + ext + std::string(".comp.png");
 
 	//encode
 	error = lodepng::encode(out_filename, image_heatmap, width, height);

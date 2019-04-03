@@ -19,7 +19,7 @@ void drawNormalMap(vector<vector<vec>>N, int height, int width, string filename)
 void computeSurfaceNormals(vector<vector<vec>>& N, mat& lights, vector<vector<unsigned char>>& images, vector<unsigned char>& mask, int height, int width);
 
 int main(int argc, char *argv[]) {
-	const char* filename = argc > 1 ? argv[1] : "gray";
+	const char* filename = argc > 1 ? argv[1] : "antoninuspious";
 	string pathStr = "psmImages/" + string(filename) + "/" + string(filename);
 
 	// ----------------------------------------
@@ -37,7 +37,7 @@ int main(int argc, char *argv[]) {
 	unsigned error = lodepng::decode(mask, width, height, pathStr + ".mask.png");
 	//if there's an error, display it
 	if(error) {
-		cout << "lodepng::decoder error " << error << ": " << lodepng_error_text(error) << endl;
+		cout << "lodepng::decoder error mask" << error << ": " << lodepng_error_text(error) << endl;
 		return -1;
 	}
 
@@ -50,7 +50,8 @@ int main(int argc, char *argv[]) {
 		error = lodepng::decode(images[i], width, height, pathStr + "." + to_string(i) + ".png");
 		//if there's an error, display it
 		if(error) {
-			cout << "lodepng::decoder error " << error << ": " << lodepng_error_text(error) << endl;
+			cout << pathStr + "." + to_string(i) + ".png" << endl;
+			cout << "lodepng::decoder error " << i << " " << error << ": " << lodepng_error_text(error) << endl;
 			return -1;
 		}
 	}

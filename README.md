@@ -13,3 +13,5 @@ An implementation of classic photometric stereo ala Woodham 1980 [1]. More conci
 sudo apt-get install libarmadillo-dev
 
 g++ -I ./external ./external/lodepng.cpp run_ps.cpp -larmadillo -llapack -lblas
+
+g++ -I ./external ./external/lodepng.cpp comp_maps.cpp
