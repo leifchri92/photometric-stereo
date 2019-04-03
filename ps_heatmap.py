@@ -2,9 +2,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 import csv
 
-hist_flag = False
+hist_flag = sys.argv[1]
 
-path_to_csv= "ps_comp-2.csv"
+path_to_csv= "ps_comp" + sys.argv[2] + ".csv"
 
 rows = []
 with open(path_to_csv) as csv_file:
