@@ -1,0 +1,3 @@
+jpeg 40
+geometric dist 0.05
+noise 2%

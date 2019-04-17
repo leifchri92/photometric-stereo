@@ -35,6 +35,7 @@ if hist_flag:
 	for c, p in zip(col, patches):
 	    plt.setp(p, 'facecolor', cm(c))
 	plt.suptitle('mean = ' + str(mean) +' / std. dev. = ' + str(std), fontsize=30, fontweight='bold')
+	plt.annotate(sys.argv[3], (0.5,0), (0, -70), fontsize=40, xycoords='axes fraction', textcoords='offset points', ha='center')
 else:
 	plt.imshow(data,cmap='magma',interpolation='nearest')
 	plt.xticks([])
