@@ -19,7 +19,7 @@ void drawNormalMap(vector<vector<vec>>N, int height, int width, string filename,
 void computeSurfaceNormals(vector<vector<vec>>& N, mat& lights, vector<vector<unsigned char>>& images, vector<unsigned char>& mask, int height, int width);
 
 int main(int argc, char *argv[]) {
-	const char* filename = argc > 1 ? argv[1] : "antoninuspius";
+	const char* filename = argc > 1 ? argv[1] : "sphere";
 	string pathStr = "psmImages/" + string(filename) + "/" + string(filename);
 
 	// ----------------------------------------

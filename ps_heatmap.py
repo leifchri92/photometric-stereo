@@ -5,7 +5,7 @@ import sys
 
 hist_flag = int(sys.argv[1])
 
-path_to_csv= "ps_comp" + sys.argv[2] + ".csv"
+path_to_csv= "csv/ps_comp" + sys.argv[2] + ".csv"
 
 rows = []
 with open(path_to_csv) as csv_file:
